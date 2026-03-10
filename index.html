@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TechBoard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --board-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 1rem;
+            height: calc(100vh - 4rem);
+            padding: 1rem;
+        }
+
+        .dash-box {
+            background: white;
+            border-radius: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.2s, background-color 0.2s;
+            text-align: center;
+            padding: 1rem;
+        }
+
+        .dash-box:active {
+            transform: scale(0.95);
+            background-color: #f3f4f6;
+        }
+
+        .dark .dash-box {
+            background: #1f2937;
+            color: white;
+        }
+
+        .dark .dash-box:active {
+            background-color: #374151;
+        }
+
+        #board-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: var(--board-bg);
+            z-index: 50;
+            display: none;
+        }
+
+        #drawing-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10;
+            touch-action: none;
+        }
+
+        #pdf-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 5;
+        }
+
+        .toolbar {
+            position: fixed;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            display: flex;
+            gap: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            z-index: 100;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .dark .toolbar {
+            background: rgba(31, 41, 55, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tool-btn {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            color: #4b5563;
+        }
+
+        .dark .tool-btn {
+            color: #d1d5db;
+        }
+
+        .tool-btn.active {
+            background: #3b82f6;
+            color: white;
+        }
+
+        #class-logo-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 60;
+            cursor: move;
+            user-select: none;
+        }
+
+        #class-logo-overlay img {
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .resize-handle {
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            width: 15px;
+            height: 15px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: nwse-resize;
+        }
+
+        /* Hide scrollbars */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            padding: 1rem;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 1.5rem;
+            width: 100%;
+            max-width: 500px;
+            padding: 2rem;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .dark .modal-content {
+            background: #1f2937;
+            color: white;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #374151;
+        }
+
+        .dark .input-group label {
+            color: #d1d5db;
+        }
+
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.75rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .dark .input-group input, .dark .input-group select {
+            background: #374151;
+            border-color: #4b5563;
+            color: white;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        .btn-primary:active {
+            background: #2563eb;
+        }
+
+        #pdf-controls {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            display: flex;
+            gap: 0.5rem;
+            z-index: 100;
+        }
+
+        .pdf-btn {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .dark .pdf-btn {
+            background: #374151;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+
+    <!-- Header -->
+    <header class="p-4 flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-gray-800 dark:text-white">TechBoard</h1>
+        <div id="status-indicator" class="text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+            Offline Ready
+        </div>
+    </header>
+
+    <!-- Dashboard -->
+    <main id="dashboard" class="dashboard-grid">
+        <div class="dash-box" onclick="openModal('setup-modal')">
+            <div class="bg-blue-100 p-4 rounded-2xl mb-3 dark:bg-blue-900">
+                <i data-lucide="user-cog" class="w-8 h-8 text-blue-600 dark:text-blue-300"></i>
+            </div>
+            <h2 class="font-bold">Profile / Class Setup</h2>
+        </div>
+        <div class="dash-box" onclick="openModal('pdf-modal')">
+            <div class="bg-purple-100 p-4 rounded-2xl mb-3 dark:bg-purple-900">
+                <i data-lucide="file-text" class="w-8 h-8 text-purple-600 dark:text-purple-300"></i>
+            </div>
+            <h2 class="font-bold">Add PDF / Document</h2>
+        </div>
+        <div class="dash-box" onclick="startClass()">
+            <div class="bg-green-100 p-4 rounded-2xl mb-3 dark:bg-green-900">
+                <i data-lucide="play" class="w-8 h-8 text-green-600 dark:text-green-300"></i>
+            </div>
+            <h2 class="font-bold">Start Class</h2>
+        </div>
+        <div class="dash-box" onclick="openModal('settings-modal')">
+            <div class="bg-gray-100 p-4 rounded-2xl mb-3 dark:bg-gray-700">
+                <i data-lucide="settings" class="w-8 h-8 text-gray-600 dark:text-gray-300"></i>
+            </div>
+            <h2 class="font-bold">Settings</h2>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <!-- Setup Modal -->
+    <div id="setup-modal" class="modal" onclick="closeModalOnOutsideClick(event)">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold mb-4">Class Setup</h2>
+            <div class="input-group">
+                <label>Class Name</label>
+                <input type="text" id="setup-class-name" placeholder="Enter class name">
+            </div>
+            <div class="input-group">
+                <label>Teacher Name</label>
+                <input type="text" id="setup-teacher-name" placeholder="Enter teacher name">
+            </div>
+            <div class="input-group">
+                <label>Class Logo</label>
+                <input type="file" id="setup-logo-input" accept="image/*" onchange="handleLogoUpload(event)">
+                <div id="logo-preview" class="mt-2 w-20 h-20 border rounded-lg hidden flex items-center justify-center overflow-hidden">
+                    <img id="preview-img" src="" alt="Logo Preview">
+                </div>
+            </div>
+            <div class="input-group">
+                <label>Board Background Color</label>
+                <input type="color" id="setup-board-color" value="#ffffff" onchange="updateBoardColor(this.value)">
+            </div>
+            <button class="btn-primary" onclick="saveSetup()">Save Setup</button>
+        </div>
+    </div>
+
+    <!-- PDF Modal -->
+    <div id="pdf-modal" class="modal" onclick="closeModalOnOutsideClick(event)">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold mb-4">Add Document</h2>
+            <div class="input-group">
+                <label>Upload PDF</label>
+                <input type="file" id="pdf-upload" accept="application/pdf" onchange="handlePDFUpload(event)">
+            </div>
+            <p class="text-sm text-gray-500 mb-4">Upload a PDF to view and annotate during class.</p>
+            <button class="btn-primary" onclick="closeModal('pdf-modal')">Done</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal" onclick="closeModalOnOutsideClick(event)">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold mb-4">Settings</h2>
+            <div class="flex justify-between items-center mb-6">
+                <span class="font-medium">Theme</span>
+                <div class="flex gap-2">
+                    <button onclick="setTheme('light')" class="p-2 rounded-lg border dark:border-gray-600" id="theme-light-btn">
+                        <i data-lucide="sun" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="setTheme('dark')" class="p-2 rounded-lg border dark:border-gray-600" id="theme-dark-btn">
+                        <i data-lucide="moon" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="input-group">
+                <label>Default Pen Size</label>
+                <input type="range" id="settings-pen-size" min="1" max="50" value="5" onchange="saveSettings()">
+            </div>
+            <div class="input-group">
+                <label>Default Pen Color</label>
+                <input type="color" id="settings-pen-color" value="#000000" onchange="saveSettings()">
+            </div>
+            <div class="space-y-3">
+                <button class="w-full py-3 px-4 bg-blue-50 text-blue-600 rounded-xl font-semibold dark:bg-blue-900/20 dark:text-blue-400" onclick="downloadAppSource()">
+                    Download App (HTML)
+                </button>
+                <button class="w-full py-3 px-4 bg-red-50 text-red-600 rounded-xl font-semibold dark:bg-red-900/20 dark:text-red-400" onclick="clearLocalData()">
+                    Clear All Data
+                </button>
+                <button class="w-full py-3 px-4 bg-gray-100 text-gray-800 rounded-xl font-semibold dark:bg-gray-700 dark:text-gray-200" onclick="closeModal('settings-modal')">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Board View -->
+    <div id="board-container">
+        <!-- PDF Layer -->
+        <canvas id="pdf-canvas"></canvas>
+        <!-- Drawing Layer -->
+        <canvas id="drawing-canvas"></canvas>
+
+        <!-- Logo Overlay -->
+        <div id="class-logo-overlay" style="width: 100px; height: 100px; display: none;">
+            <img id="board-logo-img" src="" alt="Class Logo">
+            <div class="resize-handle" id="logo-resize"></div>
+        </div>
+
+        <!-- PDF Controls -->
+        <div id="pdf-controls" style="display: none;">
+            <button class="pdf-btn" onclick="prevPage()"><i data-lucide="chevron-left"></i></button>
+            <span id="page-num" class="pdf-btn">1 / 1</span>
+            <button class="pdf-btn" onclick="nextPage()"><i data-lucide="chevron-right"></i></button>
+            <button class="pdf-btn" onclick="zoomIn()"><i data-lucide="zoom-in"></i></button>
+            <button class="pdf-btn" onclick="zoomOut()"><i data-lucide="zoom-out"></i></button>
+        </div>
+
+        <!-- Toolbar -->
+        <div id="main-toolbar" class="toolbar">
+            <button class="tool-btn active" id="pen-tool" onclick="setTool('pen')">
+                <i data-lucide="pencil"></i>
+            </button>
+            <button class="tool-btn" id="eraser-tool" onclick="setTool('eraser')">
+                <i data-lucide="eraser"></i>
+            </button>
+            <div class="w-px h-8 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+            <input type="color" id="pen-color-picker" class="w-8 h-8 rounded-full border-none cursor-pointer" onchange="updatePenColor(this.value)">
+            <input type="range" id="pen-size-slider" min="1" max="50" value="5" class="w-24" onchange="updatePenSize(this.value)">
+            <div class="w-px h-8 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+            <button class="tool-btn" onclick="undo()">
+                <i data-lucide="undo"></i>
+            </button>
+            <button class="tool-btn" onclick="redo()">
+                <i data-lucide="redo"></i>
+            </button>
+            <button class="tool-btn" onclick="clearBoard()">
+                <i data-lucide="trash-2"></i>
+            </button>
+            <div class="w-px h-8 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+            <button class="tool-btn bg-red-500 text-white" onclick="stopClass()">
+                <i data-lucide="square"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // App State
+        let state = {
+            className: '',
+            teacherName: '',
+            logoData: null,
+            boardColor: '#ffffff',
+            theme: 'light',
+            penSize: 5,
+            penColor: '#000000',
+            tool: 'pen',
+            isDrawing: false,
+            lastX: 0,
+            lastY: 0,
+            undoStack: [],
+            redoStack: [],
+            pdf: null,
+            pageNum: 1,
+            scale: 1.5,
+            isRecording: false,
+            mediaRecorder: null,
+            recordedChunks: [],
+            logoPos: { x: 20, y: 20 },
+            logoSize: { w: 100, h: 100 },
+            showLogo: true,
+            toolbarPos: 'bottom',
+            toolbarVisible: true
+        };
+
+        // DOM Elements
+        const dashboard = document.getElementById('dashboard');
+        const boardContainer = document.getElementById('board-container');
+        const drawingCanvas = document.getElementById('drawing-canvas');
+        const pdfCanvas = document.getElementById('pdf-canvas');
+        const ctx = drawingCanvas.getContext('2d');
+        const pdfCtx = pdfCanvas.getContext('2d');
+        const logoOverlay = document.getElementById('class-logo-overlay');
+        const logoImg = document.getElementById('board-logo-img');
+
+        // Load Data from LocalStorage
+        function loadData() {
+            const saved = localStorage.getItem('techboard_data');
+            if (saved) {
+                state = { ...state, ...JSON.parse(saved) };
+                applySettings();
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('techboard_data', JSON.stringify(state));
+        }
+
+        function applySettings() {
+            document.body.classList.toggle('dark', state.theme === 'dark');
+            document.documentElement.style.setProperty('--board-bg', state.boardColor);
+            document.getElementById('setup-class-name').value = state.className;
+            document.getElementById('setup-teacher-name').value = state.teacherName;
+            document.getElementById('setup-board-color').value = state.boardColor;
+            document.getElementById('settings-pen-size').value = state.penSize;
+            document.getElementById('settings-pen-color').value = state.penColor;
+            document.getElementById('pen-color-picker').value = state.penColor;
+            document.getElementById('pen-size-slider').value = state.penSize;
+
+            if (state.logoData) {
+                document.getElementById('logo-preview').classList.remove('hidden');
+                document.getElementById('preview-img').src = state.logoData;
+                logoImg.src = state.logoData;
+                logoOverlay.style.display = state.showLogo ? 'block' : 'none';
+                logoOverlay.style.left = state.logoPos.x + 'px';
+                logoOverlay.style.top = state.logoPos.y + 'px';
+                logoOverlay.style.width = state.logoSize.w + 'px';
+                logoOverlay.style.height = state.logoSize.h + 'px';
+            }
+        }
+
+        // Modal Logic
+        function openModal(id) {
+            document.getElementById(id).style.display = 'flex';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        function closeModalOnOutsideClick(e) {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+            }
+        }
+
+        // Setup Logic
+        function handleLogoUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    state.logoData = event.target.result;
+                    document.getElementById('logo-preview').classList.remove('hidden');
+                    document.getElementById('preview-img').src = state.logoData;
+                    logoImg.src = state.logoData;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function saveSetup() {
+            state.className = document.getElementById('setup-class-name').value;
+            state.teacherName = document.getElementById('setup-teacher-name').value;
+            state.boardColor = document.getElementById('setup-board-color').value;
+            saveData();
+            applySettings();
+            closeModal('setup-modal');
+        }
+
+        function updateBoardColor(color) {
+            state.boardColor = color;
+            document.documentElement.style.setProperty('--board-bg', color);
+            saveData();
+        }
+
+        // Settings Logic
+        function setTheme(theme) {
+            state.theme = theme;
+            saveData();
+            applySettings();
+        }
+
+        function saveSettings() {
+            state.penSize = document.getElementById('settings-pen-size').value;
+            state.penColor = document.getElementById('settings-pen-color').value;
+            saveData();
+            applySettings();
+        }
+
+        function clearLocalData() {
+            if (confirm('Are you sure you want to clear all data? This cannot be undone.')) {
+                localStorage.removeItem('techboard_data');
+                location.reload();
+            }
+        }
+
+        function downloadAppSource() {
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([`<!DOCTYPE html>\n${htmlContent}`], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'TechBoard.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // PDF Logic
+        function handlePDFUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const typedarray = new Uint8Array(event.target.result);
+                    pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+                        state.pdf = pdf;
+                        state.pageNum = 1;
+                        document.getElementById('pdf-controls').style.display = 'flex';
+                        renderPage(state.pageNum);
+                    });
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        function renderPage(num) {
+            if (!state.pdf) return;
+            state.pdf.getPage(num).then(function(page) {
+                const viewport = page.getViewport({ scale: state.scale });
+                pdfCanvas.height = viewport.height;
+                pdfCanvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: pdfCtx,
+                    viewport: viewport
+                };
+                page.render(renderContext);
+                document.getElementById('page-num').textContent = `${num} / ${state.pdf.numPages}`;
+            });
+        }
+
+        function prevPage() {
+            if (state.pageNum <= 1) return;
+            state.pageNum--;
+            renderPage(state.pageNum);
+        }
+
+        function nextPage() {
+            if (!state.pdf || state.pageNum >= state.pdf.numPages) return;
+            state.pageNum++;
+            renderPage(state.pageNum);
+        }
+
+        function zoomIn() {
+            state.scale += 0.2;
+            renderPage(state.pageNum);
+        }
+
+        function zoomOut() {
+            if (state.scale <= 0.5) return;
+            state.scale -= 0.2;
+            renderPage(state.pageNum);
+        }
+
+        // Canvas Drawing Logic
+        function initCanvas() {
+            drawingCanvas.width = window.innerWidth;
+            drawingCanvas.height = window.innerHeight;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = state.penSize;
+            ctx.strokeStyle = state.penColor;
+        }
+
+        function startDrawing(e) {
+            state.isDrawing = true;
+            const pos = getPos(e);
+            [state.lastX, state.lastY] = [pos.x, pos.y];
+            saveToUndo();
+        }
+
+        function draw(e) {
+            if (!state.isDrawing) return;
+            const pos = getPos(e);
+            ctx.beginPath();
+            ctx.moveTo(state.lastX, state.lastY);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+            [state.lastX, state.lastY] = [pos.x, pos.y];
+        }
+
+        function stopDrawing() {
+            state.isDrawing = false;
+        }
+
+        function getPos(e) {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX, y: clientY };
+        }
+
+        function setTool(tool) {
+            state.tool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`${tool}-tool`).classList.add('active');
+            
+            if (tool === 'eraser') {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = state.penSize * 2;
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.lineWidth = state.penSize;
+                ctx.strokeStyle = state.penColor;
+            }
+        }
+
+        function updatePenColor(color) {
+            state.penColor = color;
+            if (state.tool === 'pen') {
+                ctx.strokeStyle = color;
+            }
+        }
+
+        function updatePenSize(size) {
+            state.penSize = size;
+            ctx.lineWidth = state.tool === 'eraser' ? size * 2 : size;
+        }
+
+        function saveToUndo() {
+            state.undoStack.push(drawingCanvas.toDataURL());
+            if (state.undoStack.length > 20) state.undoStack.shift();
+            state.redoStack = [];
+        }
+
+        function undo() {
+            if (state.undoStack.length === 0) return;
+            state.redoStack.push(drawingCanvas.toDataURL());
+            const imgData = state.undoStack.pop();
+            const img = new Image();
+            img.onload = function() {
+                ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = imgData;
+        }
+
+        function redo() {
+            if (state.redoStack.length === 0) return;
+            state.undoStack.push(drawingCanvas.toDataURL());
+            const imgData = state.redoStack.pop();
+            const img = new Image();
+            img.onload = function() {
+                ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = imgData;
+        }
+
+        function clearBoard() {
+            if (confirm('Clear the entire board?')) {
+                saveToUndo();
+                ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            }
+        }
+
+        // Recording Logic
+        async function startRecording() {
+            try {
+                const stream = drawingCanvas.captureStream(30); // 30 FPS
+                const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Combine canvas stream and audio stream
+                const combinedStream = new MediaStream([
+                    ...stream.getVideoTracks(),
+                    ...audioStream.getAudioTracks()
+                ]);
+
+                state.mediaRecorder = new MediaRecorder(combinedStream, {
+                    mimeType: 'video/webm;codecs=vp9'
+                });
+
+                state.mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        state.recordedChunks.push(e.data);
+                    }
+                };
+
+                state.mediaRecorder.onstop = () => {
+                    const blob = new Blob(state.recordedChunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `TechBoard_Class_${new Date().getTime()}.webm`;
+                    a.click();
+                    state.recordedChunks = [];
+                    
+                    // Stop audio tracks
+                    audioStream.getTracks().forEach(track => track.stop());
+                };
+
+                state.mediaRecorder.start();
+                state.isRecording = true;
+                console.log('Recording started');
+            } catch (err) {
+                console.error('Error starting recording:', err);
+                alert('Recording failed: Microphone access is required.');
+            }
+        }
+
+        function stopRecording() {
+            if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+                state.mediaRecorder.stop();
+                state.isRecording = false;
+            }
+        }
+
+        // Class Lifecycle
+        function startClass() {
+            boardContainer.style.display = 'block';
+            dashboard.style.display = 'none';
+            document.querySelector('header').style.display = 'none';
+            initCanvas();
+            startRecording();
+            
+            if (state.logoData) {
+                logoOverlay.style.display = state.showLogo ? 'block' : 'none';
+            }
+        }
+
+        function stopClass() {
+            if (confirm('Stop class and save recording?')) {
+                stopRecording();
+                boardContainer.style.display = 'none';
+                dashboard.style.display = 'grid';
+                document.querySelector('header').style.display = 'flex';
+            }
+        }
+
+        // Logo Interaction (Drag & Resize)
+        let isDraggingLogo = false;
+        let isResizingLogo = false;
+        let startX, startY, startW, startH;
+
+        logoOverlay.addEventListener('mousedown', startLogoAction);
+        logoOverlay.addEventListener('touchstart', startLogoAction);
+
+        function startLogoAction(e) {
+            const touch = e.touches ? e.touches[0] : e;
+            if (e.target.id === 'logo-resize') {
+                isResizingLogo = true;
+                startW = state.logoSize.w;
+                startH = state.logoSize.h;
+            } else {
+                isDraggingLogo = true;
+            }
+            startX = touch.clientX;
+            startY = touch.clientY;
+            e.preventDefault();
+        }
+
+        window.addEventListener('mousemove', handleLogoAction);
+        window.addEventListener('touchmove', handleLogoAction);
+
+        function handleLogoAction(e) {
+            if (!isDraggingLogo && !isResizingLogo) return;
+            const touch = e.touches ? e.touches[0] : e;
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+
+            if (isDraggingLogo) {
+                state.logoPos.x += dx;
+                state.logoPos.y += dy;
+                logoOverlay.style.left = state.logoPos.x + 'px';
+                logoOverlay.style.top = state.logoPos.y + 'px';
+            } else if (isResizingLogo) {
+                state.logoSize.w = Math.max(50, startW + dx);
+                state.logoSize.h = Math.max(50, startH + dy);
+                logoOverlay.style.width = state.logoSize.w + 'px';
+                logoOverlay.style.height = state.logoSize.h + 'px';
+            }
+
+            startX = touch.clientX;
+            startY = touch.clientY;
+        }
+
+        window.addEventListener('mouseup', stopLogoAction);
+        window.addEventListener('touchend', stopLogoAction);
+
+        function stopLogoAction() {
+            if (isDraggingLogo || isResizingLogo) {
+                isDraggingLogo = false;
+                isResizingLogo = false;
+                saveData();
+            }
+        }
+
+        // Event Listeners
+        drawingCanvas.addEventListener('mousedown', startDrawing);
+        drawingCanvas.addEventListener('mousemove', draw);
+        drawingCanvas.addEventListener('mouseup', stopDrawing);
+        drawingCanvas.addEventListener('mouseout', stopDrawing);
+
+        drawingCanvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startDrawing(e);
+        });
+        drawingCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            draw(e);
+        });
+        drawingCanvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stopDrawing();
+        });
+
+        window.addEventListener('resize', () => {
+            const temp = drawingCanvas.toDataURL();
+            drawingCanvas.width = window.innerWidth;
+            drawingCanvas.height = window.innerHeight;
+            const img = new Image();
+            img.onload = () => ctx.drawImage(img, 0, 0);
+            img.src = temp;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = state.penSize;
+            ctx.strokeStyle = state.penColor;
+        });
+
+        // Initialize
+        loadData();
+        initCanvas();
+
+    </script>
+</body>
+</html>

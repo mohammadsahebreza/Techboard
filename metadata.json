@@ -1,0 +1,5 @@
+{
+  "name": "TechBoard",
+  "description": "A mobile-first offline digital teaching board with PDF support, canvas drawing, and screen recording.",
+  "requestFramePermissions": ["microphone"]
+}
